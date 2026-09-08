@@ -1,0 +1,8 @@
+export { RgaDoc } from './doc'
+export type { Applied, DocStats, Effect, Item, Snapshot, SnapshotRun } from './doc'
+export { compareIds, idKey, keyOf, randomSiteId, sameId } from './id'
+export type { ItemId, SiteId } from './id'
+export { decodeOp, decodeOps, describeOp, encodeOp, encodeOps, opFromJSON, opKey } from './ops'
+export type { DeleteOp, InsertOp, Op } from './ops'
+export { VersionVector } from './version-vector'
+export type { VectorOrder, VersionVectorJSON } from './version-vector'
