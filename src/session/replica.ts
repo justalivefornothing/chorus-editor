@@ -245,7 +245,7 @@ export class Replica {
     const appliedKeys = new Set(applied.map((a) => a.op.site + '#' + a.op.seq))
     for (const op of ops) {
       if (appliedKeys.has(op.site + '#' + op.seq)) continue
-      if (this.doc.pendingOps().includes(op)) this.record(op, 'buffered', now, this.whyPending(op))
+      if (this.doc.isPending(op)) this.record(op, 'buffered', now, this.whyPending(op))
     }
     for (const a of applied) this.record(a.op, 'remote', now)
     if (applied.length > 0) {

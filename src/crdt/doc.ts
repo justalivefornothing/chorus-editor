@@ -72,7 +72,13 @@ export class RgaDoc {
   private readonly vv = new VersionVector()
   /** Per-site op log (index seq-1). Powers delta sync and persistence. */
   private readonly log = new Map<SiteId, Op[]>()
-  private readonly pending: Op[] = []
+  /**
+   * Causal buffer: ops we cannot apply yet, grouped by site and keyed by seq.
+   * Grouping lets `drain()` walk each site's FIFO chain (seq n, n+1, n+2 …) in
+   * a single pass instead of rescanning a flat list after every application.
+   */
+  private readonly pending = new Map<SiteId, Map<number, Op>>()
+  private pendingCount = 0
 
   private readonly head: Item
   private readonly byKey = new Map<string, Item>()
@@ -114,11 +120,18 @@ export class RgaDoc {
   stats(): DocStats {
     let ops = 0
     for (const arr of this.log.values()) ops += arr.length
-    return { live: this.liveCount, tombstones: this.totalCount - this.liveCount, pending: this.pending.length, ops }
+    return { live: this.liveCount, tombstones: this.totalCount - this.liveCount, pending: this.pendingCount, ops }
   }
 
-  pendingOps(): readonly Op[] {
-    return this.pending
+  /** Snapshot of the causal buffer (site order, then seq order). */
+  pendingOps(): Op[] {
+    const out: Op[] = []
+    for (const bySeq of this.pending.values()) for (const seq of [...bySeq.keys()].sort((a, b) => a - b)) out.push(bySeq.get(seq)!)
+    return out
+  }
+
+  isPending(op: Op): boolean {
+    return this.pending.get(op.site)?.has(op.seq) ?? false
   }
 
   hasItem(id: ItemId): boolean {
@@ -204,33 +217,57 @@ export class RgaDoc {
    * our own echoes are ignored.
    */
   receive(op: Op): Applied[] {
-    if (op.site === this.site) return []
-    if (op.seq <= this.vv.get(op.site)) return []
-    for (const p of this.pending) if (p.site === op.site && p.seq === op.seq) return []
-    this.pending.push(op)
+    if (!this.enqueue(op)) return []
     return this.drain()
   }
 
+  /** Batch variant: buffers everything first, then drains once. */
   receiveMany(ops: readonly Op[]): Applied[] {
-    const out: Applied[] = []
-    for (const op of ops) for (const a of this.receive(op)) out.push(a)
-    return out
+    let any = false
+    for (const op of ops) if (this.enqueue(op)) any = true
+    return any ? this.drain() : []
   }
 
+  /** Adds an op to the causal buffer unless it is ours, already applied, or already buffered. */
+  private enqueue(op: Op): boolean {
+    if (op.site === this.site) return false
+    if (op.seq <= this.vv.get(op.site)) return false
+    let bySeq = this.pending.get(op.site)
+    if (!bySeq) {
+      bySeq = new Map()
+      this.pending.set(op.site, bySeq)
+    }
+    if (bySeq.has(op.seq)) return false
+    bySeq.set(op.seq, op)
+    this.pendingCount++
+    return true
+  }
+
+  /**
+   * Applies every buffered op whose dependencies are met. Each site's chain is
+   * followed from `vv[site] + 1` upwards; applying an op can unblock ops from
+   * other sites (their origin just arrived), so we loop until a full pass
+   * makes no progress. Total cost is O(pending × chain-depth), not O(pending²).
+   */
   private drain(): Applied[] {
     const applied: Applied[] = []
     let progressed = true
-    while (progressed) {
+    while (progressed && this.pendingCount > 0) {
       progressed = false
-      for (let i = 0; i < this.pending.length; i++) {
-        const op = this.pending[i]
-        if (!this.isReady(op)) continue
-        this.pending.splice(i, 1)
-        i--
-        const effects = op.t === 'i' ? this.applyInsert(op) : this.applyDelete(op)
-        this.commit(op)
-        applied.push({ op, effects })
-        progressed = true
+      for (const [site, bySeq] of this.pending) {
+        let next = this.vv.get(site) + 1
+        let op = bySeq.get(next)
+        while (op && this.isReady(op)) {
+          bySeq.delete(next)
+          this.pendingCount--
+          const effects = op.t === 'i' ? this.applyInsert(op) : this.applyDelete(op)
+          this.commit(op)
+          applied.push({ op, effects })
+          progressed = true
+          next++
+          op = bySeq.get(next)
+        }
+        if (bySeq.size === 0) this.pending.delete(site)
       }
     }
     return applied
