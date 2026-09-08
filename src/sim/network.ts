@@ -61,12 +61,12 @@ export class SimNetwork {
   private delivered = 0
   private dropped = 0
   private bytes = 0
+  private readonly clock: Clock
+  private readonly rng: Rng
 
-  constructor(
-    private readonly clock: Clock,
-    private readonly rng: Rng,
-    config: Partial<LinkConfig> = {},
-  ) {
+  constructor(clock: Clock, rng: Rng, config: Partial<LinkConfig> = {}) {
+    this.clock = clock
+    this.rng = rng
     this.config = { ...DEFAULT_LINK, ...config }
   }
 

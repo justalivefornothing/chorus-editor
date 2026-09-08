@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <rect width="1200" height="630" fill="#0b0d12"/>
+  <rect x="60" y="60" width="1080" height="510" rx="18" fill="#0f1218" stroke="#1c212c"/>
+  <g transform="translate(110 130)">
+    <rect width="72" height="72" rx="18" fill="#13171f"/>
+    <path d="M18 47V25" stroke="#5eead4" stroke-width="7" stroke-linecap="round"/>
+    <path d="M31 52V20" stroke="#7dd3fc" stroke-width="7" stroke-linecap="round"/>
+    <path d="M45 43V29" stroke="#f472b6" stroke-width="7" stroke-linecap="round"/>
+    <path d="M58 47V25" stroke="#fbbf24" stroke-width="7" stroke-linecap="round"/>
+  </g>
+  <text x="210" y="185" font-family="Inter, system-ui, sans-serif" font-size="64" font-weight="700" fill="#d7dce5">Chorus</text>
+  <text x="110" y="290" font-family="Inter, system-ui, sans-serif" font-size="30" fill="#a3adbd">A multi-cursor collaborative code editor powered by a</text>
+  <text x="110" y="332" font-family="Inter, system-ui, sans-serif" font-size="30" fill="#a3adbd">from-scratch RGA sequence CRDT.</text>
+  <rect x="110" y="400" width="250" height="52" rx="10" fill="#0f2b1b" stroke="#4ade8066"/>
+  <text x="235" y="434" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="22" font-weight="700" fill="#4ade80" letter-spacing="3">CONVERGED</text>
+  <text x="390" y="434" font-family="JetBrains Mono, ui-monospace, monospace" font-size="20" fill="#6b7484">text + version vectors identical</text>
+</svg>

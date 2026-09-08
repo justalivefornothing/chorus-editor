@@ -104,6 +104,7 @@ describe('integrate(): concurrent inserts at the same origin', () => {
     a.localDelete(1, 1) // A's clock is now 2
     const opA = a.localInsert(1, 'A')! // ctr 3
     const opB = b.localInsert(1, 'B')! // ctr 2
+    expect(opA.ctr).toBeGreaterThan(opB.ctr)
     deliver(a, [opB])
     deliver(b, [...a.opsSince(b.version())])
     expect(a.text()).toBe(b.text())

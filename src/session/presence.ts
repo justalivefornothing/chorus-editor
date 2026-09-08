@@ -19,8 +19,11 @@ export const PRESENCE_TTL_MS = 5000
  */
 export class PresenceTable {
   private readonly peers = new Map<SiteId, PeerState>()
+  private readonly ttlMs: number
 
-  constructor(private readonly ttlMs: number = PRESENCE_TTL_MS) {}
+  constructor(ttlMs: number = PRESENCE_TTL_MS) {
+    this.ttlMs = ttlMs
+  }
 
   get size(): number {
     return this.peers.size

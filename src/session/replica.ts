@@ -1,4 +1,4 @@
-import { RgaDoc, VersionVector, describeOp, type Applied, type DocStats, type Op, type SiteId, type Snapshot } from '../crdt'
+import { RgaDoc, VersionVector, describeOp, type Applied, type DocStats, type Op, type SiteId, type Snapshot, type VersionVectorJSON } from '../crdt'
 import { every, realClock, type Clock } from '../sim/clock'
 import type { CursorRef, Message, PeerInfo, Transport } from '../transport/protocol'
 import { Emitter } from './emitter'
@@ -77,6 +77,8 @@ export class Replica {
   private cancels: Array<() => void> = []
   private running = false
   private lastSyncPeer: SiteId | null = null
+  /** Last version vector each peer told us about (hello/sync), for the sync indicator. */
+  private readonly peerVersions = new Map<SiteId, VersionVectorJSON>()
 
   constructor(opts: ReplicaOptions) {
     this.peer = opts.peer
@@ -198,6 +200,7 @@ export class Replica {
     this.events.emit('traffic', 'in', msg)
     switch (msg.k) {
       case 'hello': {
+        this.peerVersions.set(msg.from, msg.vv)
         this.presence.touch(msg.peer, null, false, this.clock.now())
         this.events.emit('peers')
         this.offerMissing(msg.vv)
@@ -211,6 +214,7 @@ export class Replica {
         this.integrate(msg.ops)
         break
       case 'sync': {
+        this.peerVersions.set(msg.from, msg.vv)
         this.offerMissing(msg.vv)
         const theirs = VersionVector.from(msg.vv)
         const now = this.clock.now()
@@ -225,6 +229,7 @@ export class Replica {
         break
       }
       case 'bye':
+        this.peerVersions.delete(msg.from)
         if (this.presence.remove(msg.from)) this.events.emit('peers')
         break
     }
@@ -311,6 +316,22 @@ export class Replica {
     this.timeline.push(entry)
     if (this.timeline.length > this.timelineLimit) this.timeline.splice(0, this.timeline.length - this.timelineLimit)
     this.events.emit('timeline')
+  }
+
+  /**
+   * Sync status against the peers currently present: how many have reported
+   * a version vector identical to ours in their last hello/sync message.
+   */
+  syncStatus(): { peers: number; inSync: number } {
+    const mine = this.doc.versionString()
+    let inSync = 0
+    let peers = 0
+    for (const p of this.presence.list()) {
+      peers++
+      const vv = this.peerVersions.get(p.info.site)
+      if (vv && VersionVector.from(vv).toString() === mine) inSync++
+    }
+    return { peers, inSync }
   }
 
   /** Site we last asked for a repair from (debug/UI). */

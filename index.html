@@ -2,9 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>chorus-editor</title>
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0b0d12" />
+    <title>Chorus — collaborative code editor on a from-scratch RGA CRDT</title>
+    <meta
+      name="description"
+      content="Chorus is a multi-cursor collaborative code editor powered by a hand-written RGA sequence CRDT. Sync across tabs with BroadcastChannel, or watch two replicas converge through a simulated network with latency, packet loss and partitions."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Chorus — collaborative code editor on a from-scratch RGA CRDT" />
+    <meta
+      property="og:description"
+      content="Multi-cursor collaborative editing with a from-scratch RGA CRDT, causal buffering, version vectors, and a lag/partition slider that visibly proves convergence."
+    />
+    <meta property="og:image" content="/og.svg" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Chorus — collaborative code editor on a from-scratch RGA CRDT" />
+    <meta name="twitter:description" content="Two replicas, one simulated network, byte-for-byte convergence you can watch." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2313171f'/%3E%3Cpath d='M8 21V11' stroke='%235eead4' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M14 23V9' stroke='%237dd3fc' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M20 19v-6' stroke='%23f472b6' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M26 21V11' stroke='%23fbbf24' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
   </head>
   <body>
     <div id="root"></div>

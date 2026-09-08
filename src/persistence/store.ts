@@ -127,12 +127,15 @@ export class DebouncedSaver {
   private timer: ReturnType<typeof setTimeout> | null = null
   private pending: (() => RoomRecord) | null = null
   private inflight: Promise<void> = Promise.resolve()
+  private readonly store: RoomStore
+  private readonly delayMs: number
+  private readonly onError: (err: unknown) => void
 
-  constructor(
-    private readonly store: RoomStore,
-    private readonly delayMs = 400,
-    private readonly onError: (err: unknown) => void = (err) => console.error('[chorus] persist failed', err),
-  ) {}
+  constructor(store: RoomStore, delayMs = 400, onError: (err: unknown) => void = (err) => console.error('[chorus] persist failed', err)) {
+    this.store = store
+    this.delayMs = delayMs
+    this.onError = onError
+  }
 
   schedule(build: () => RoomRecord): void {
     this.pending = build
