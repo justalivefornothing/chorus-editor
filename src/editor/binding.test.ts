@@ -147,6 +147,20 @@ describe('EditorBinding (jsdom)', () => {
     expect(firstFrom).toBe(3)
   })
 
+  it('mirrors programmatic local edits (seed / stress test) into the editor without re-emitting ops', () => {
+    const { clock, a, b } = makeRoom()
+    const parent = document.createElement('div')
+    document.body.appendChild(parent)
+    const ea = makeView(a, parent)
+    views.push(ea.view)
+    a.insert(0, 'seeded text')
+    a.delete(0, 7)
+    expect(ea.view.state.doc.toString()).toBe('text')
+    expect(a.doc.versionJSON()).toEqual({ A: 2 })
+    clock.advance(50)
+    expect(b.doc.text()).toBe('text')
+  })
+
   it('remote annotation prevents echo even for direct dispatches', () => {
     const { a } = makeRoom()
     const parent = document.createElement('div')

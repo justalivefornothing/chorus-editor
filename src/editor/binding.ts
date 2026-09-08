@@ -53,6 +53,15 @@ export function effectsToChangeSet(effects: readonly Effect[], startLength: numb
   return cs
 }
 
+/** Sequential local edits (index/remove/insert) -> one ChangeSet. */
+export function localToChangeSet(changes: readonly LocalChange[], startLength: number): ChangeSet {
+  let cs = ChangeSet.empty(startLength)
+  for (const c of changes) {
+    cs = cs.compose(ChangeSet.of({ from: c.index, to: c.index + c.remove, insert: c.insert }, cs.newLength))
+  }
+  return cs
+}
+
 export function appliedToChangeSet(applied: readonly Applied[], startLength: number): ChangeSet {
   const effects: Effect[] = []
   for (const a of applied) for (const e of a.effects) effects.push(e)
@@ -76,13 +85,20 @@ export class EditorBinding {
   private view: EditorView | null = null
   private readonly unsubscribe: () => void
   private applying = false
+  /** True while we are forwarding an editor transaction into the CRDT. */
+  private fromEditor = false
   private readonly replica: Replica
   private readonly hooks: BindingHooks
 
   constructor(replica: Replica, hooks: BindingHooks = {}) {
     this.replica = replica
     this.hooks = hooks
-    this.unsubscribe = replica.events.on('remote', (applied) => this.applyRemote(applied))
+    const offRemote = replica.events.on('remote', (applied) => this.applyRemote(applied))
+    const offLocal = replica.events.on('local', (changes) => this.applyProgrammatic(changes))
+    this.unsubscribe = () => {
+      offRemote()
+      offLocal()
+    }
   }
 
   /** The extension to install in the EditorState. */
@@ -109,12 +125,15 @@ export class EditorBinding {
     if (update.docChanged && !isRemote(update) && !this.applying) {
       const changes = updateToLocal(update)
       if (changes.length > 0) {
+        this.fromEditor = true
         try {
           this.replica.applyLocal(changes)
         } catch (err) {
           console.error('[chorus] local change rejected, resyncing editor', err)
           this.resync()
           return
+        } finally {
+          this.fromEditor = false
         }
         if (import.meta.env?.DEV && update.state.doc.toString() !== this.replica.doc.text()) {
           console.warn('[chorus] editor/CRDT drift after local edit; resyncing')
@@ -136,6 +155,25 @@ export class EditorBinding {
     this.applying = true
     try {
       view.dispatch({ changes, annotations: remoteAnnotation.of(true) })
+    } finally {
+      this.applying = false
+    }
+    if (view.state.doc.toString() !== this.replica.doc.text()) this.resync()
+  }
+
+  /**
+   * Local edits that did not come from this editor (seeding a document, the
+   * stress test, tests driving the replica directly) still have to show up.
+   */
+  private applyProgrammatic(changes: readonly LocalChange[]): void {
+    if (this.fromEditor) return
+    const view = this.view
+    if (!view) return
+    const cs = localToChangeSet(changes, view.state.doc.length)
+    if (cs.empty) return
+    this.applying = true
+    try {
+      view.dispatch({ changes: cs, annotations: remoteAnnotation.of(true) })
     } finally {
       this.applying = false
     }

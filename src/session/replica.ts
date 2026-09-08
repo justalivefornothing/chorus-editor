@@ -39,6 +39,8 @@ export interface ReplicaOptions {
 type ReplicaEvents = {
   /** Remote ops were integrated; effects must be replayed into the editor. */
   remote: [applied: readonly Applied[]]
+  /** Local edits were applied to the CRDT (from the editor or programmatically, e.g. the stress test). */
+  local: [changes: readonly LocalChange[]]
   /** Document text changed (locally or remotely). */
   change: [source: 'local' | 'remote']
   peers: []
@@ -145,6 +147,7 @@ export class Replica {
     for (const op of ops) this.record(op, 'local', now)
     this.send({ k: 'ops', from: this.site, ops })
     this.markTyping(now)
+    this.events.emit('local', changes)
     this.events.emit('change', 'local')
     return ops
   }
