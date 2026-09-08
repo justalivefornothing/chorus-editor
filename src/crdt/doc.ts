@@ -82,7 +82,7 @@ export class RgaDoc {
 
   private readonly head: Item
   private readonly byKey = new Map<string, Item>()
-  private visible: Item[] = []
+  private readonly visible: Item[] = []
   private dirty = false
   private liveCount = 0
   private totalCount = 0
@@ -194,6 +194,7 @@ export class RgaDoc {
       this.commit(op)
       run = null
     }
+    const first = this.visible[index]
     for (let i = index; i < index + length; i++) {
       const it = this.visible[i]
       it.deleted = true
@@ -205,7 +206,8 @@ export class RgaDoc {
       }
     }
     flush()
-    this.dirty = true
+    // Everything before `index` is untouched; re-index from the first tombstone on.
+    this.reindexFrom(first, index)
     return ops
   }
 
@@ -299,6 +301,7 @@ export class RgaDoc {
       origin = this.byKey.get(idKey(op.origin)) ?? null
       if (!origin) throw new Error(`origin ${idKey(op.origin)} missing for ${op.site}#${op.seq}`)
     }
+    const wasClean = !this.dirty
     const inserted: Item[] = []
     for (let j = 0; j < op.s.length; j++) {
       const key = keyOf(op.site, op.ctr + j)
@@ -321,8 +324,20 @@ export class RgaDoc {
       origin = item
     }
     if (inserted.length === 0) return []
-    this.dirty = true
-    this.ensureIndex()
+    // Fast path: the run landed as one contiguous block into a clean index, so
+    // only items from the first new one onward need re-indexing (O(1) when
+    // typing at the end of the document). Otherwise fall back to a full rebuild.
+    let contiguous = wasClean
+    for (let k = 1; contiguous && k < inserted.length; k++) if (inserted[k - 1].next !== inserted[k]) contiguous = false
+    if (contiguous) {
+      const first = inserted[0]
+      const prev = first.prev!
+      const start = prev === this.head ? 0 : prev.deleted ? prev.vis : prev.vis + 1
+      this.reindexFrom(first, start)
+    } else {
+      this.dirty = true
+      this.ensureIndex()
+    }
     // Group the new items into runs of adjacent visible indices. Because we
     // walk them in document order, each run's sequential index equals its
     // final visible index.
@@ -375,7 +390,11 @@ export class RgaDoc {
     }
     for (const it of targets) it.deleted = true
     this.liveCount -= targets.length
-    if (targets.length > 0) this.dirty = true
+    if (targets.length > 0) {
+      let first = targets[0]
+      for (const it of targets) if (it.vis < first.vis) first = it
+      this.reindexFrom(first, first.vis)
+    }
     indices.sort((a, b) => a - b)
     // Sequential coordinates: after removing k earlier chars, index shifts by k.
     const effects: Effect[] = []
@@ -392,14 +411,31 @@ export class RgaDoc {
 
   // ───────────────────────── index cache ─────────────────────────
 
+  /**
+   * Rebuilds the visible-index cache in full. Only needed after a snapshot
+   * restore or when an insert could not take the incremental path.
+   */
   private ensureIndex(): void {
-    if (!this.dirty && this.visible.length === this.liveCount) return
-    const vis: Item[] = []
-    for (let it = this.head.next; it; it = it.next) {
-      it.vis = vis.length
-      if (!it.deleted) vis.push(it)
+    if (!this.dirty) return
+    if (this.head.next) this.reindexFrom(this.head.next, 0)
+    else this.visible.length = 0
+    this.dirty = false
+  }
+
+  /**
+   * Re-numbers `start` and everything after it, assuming `start` is the
+   * `n`-th visible item (or sits where the `n`-th would be, if it is a
+   * tombstone). The `visible` array is reused rather than reallocated — a
+   * fresh 20k-element array per keystroke lands in V8's large-object space
+   * and costs far more than the walk itself.
+   */
+  private reindexFrom(start: Item, n: number): void {
+    const vis = this.visible
+    for (let it: Item | null = start; it; it = it.next) {
+      it.vis = n
+      if (!it.deleted) vis[n++] = it
     }
-    this.visible = vis
+    vis.length = n
     this.dirty = false
   }
 
