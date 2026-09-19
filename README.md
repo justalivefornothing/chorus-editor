@@ -1,10 +1,10 @@
 # Chorus Editor
 
-A multi-cursor collaborative code editor powered by a from-scratch RGA sequence CRDT. Syncs across tabs and peers; a lag/partition slider makes convergence visible.
+Multi-cursor collaborative code editor powered by a from-scratch **RGA sequence CRDT**. Syncs across tabs and peers; a lag/partition slider makes convergence visible.
 
-## Idea
+## Why
 
-Most collaborative editors hide the CRDT. This one puts it on the surface: you can introduce lag or a network partition and watch the replicas converge (or temporarily diverge) in real time.
+Most collaborative editors hide the CRDT. This one puts it on the surface: introduce lag or a network partition and watch replicas converge (or temporarily diverge) in real time.
 
 ## Features
 
@@ -13,9 +13,13 @@ Most collaborative editors hide the CRDT. This one puts it on the surface: you c
 - Cross-tab / peer sync
 - Controllable lag and partition for demos
 
-## Status
+## Run
 
-Core CRDT + editor surface present. See source / any PLAN for remaining polish.
+```bash
+npm install
+npm run dev
+npm test
+```
 
 ## License
 
