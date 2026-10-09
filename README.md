@@ -1,76 +1,50 @@
-# Chorus Editor
+# Chorus
 
-**A real-time multi-cursor collaborative code editor powered by a from-scratch RGA (Replicated Growable Array) sequence CRDT, featuring causal FIFO buffers, vector clocks, and interactive partition/latency simulation.**
+A collaborative text editor for exploring an RGA sequence CRDT, with a network simulator and a view of pending operations and replica state.
 
-Most collaborative text editors rely on opaque hosted services or obscure operational transformation (OT) algorithms. Chorus is built from first principles to make Conflict-Free Replicated Data Types (CRDTs) visually and mathematically transparent. Replicas synchronize across browser tabs and WebRTC peers while a live network lab lets you introduce artificial packet latency, reordering, and partition splits to witness mathematical convergence in real time.
+**Live room** synchronizes tabs in the same browser through BroadcastChannel. **Split lab** runs two replicas on one page, where you can delay delivery, drop packets, and temporarily partition the simulated network. Cross-device collaboration is not implemented.
 
----
-
-## Distributed Systems Architecture
-
-```
-User Keystroke (Site A)
-    │
-    ▼ [Local Insert/Delete]
-    │
-    ▼ [RGA CRDT Engine]      Generates uniquely identified operation { id, refId, value }
-    │
-    ▼ [Broadcast Channel / WebRTC]
-    │
-    ▼ [Causal Buffer]        Holds out-of-order operations until causal dependencies arrive
-    │
-    ▼ [Tree Integration]     Deterministic tie-breaking (logical timestamp > site ID)
-    │
-    ▼ [CodeMirror Binding]   Incremental viewport decoration & multi-cursor positions
-```
-
-### 1. The RGA CRDT Model (`src/crdt/rga.ts`)
-Chorus implements the **Replicated Growable Array (RGA)** algorithm:
-- Every character is represented as a persistent node identified by a unique tuple: `OpID { siteId: string, seq: number }`.
-- Insertions are defined relative to the character immediately to their left (`refId`).
-- Deletions are processed as tombstones (`isDeleted = true`) to preserve the causal structure for concurrent edits without altering character IDs.
-- Deterministic conflict resolution: when two sites insert concurrently after the same reference node, operations are ordered strictly by logical clock sequence numbers; ties are broken by lexicographical site ID comparison.
-
-### 2. Causal FIFO Buffering (`src/crdt/buffer.ts`)
-- Network transports (BroadcastChannel, WebSockets, or WebRTC datachannels) do not guarantee causal delivery.
-- Replicas maintain a per-site **Causal Buffer** and local **Vector Clock**.
-- If an operation arrives whose `refId` is not yet present in the local replica tree, it is deferred in the buffer until the prerequisite operations arrive, preventing tree corruption.
-
-### 3. Incremental Index Maintenance
-- Instead of rebuilding the visible string from scratch on every character insertion ($O(N)$), Chorus maintains an index tree over visible (non-tombstone) characters.
-- Visible offsets are updated incrementally from the edit point, achieving $>500\times$ faster updates at large document sizes (tested up to 50,000 characters).
-
----
-
-## Architectural Decision Records (ADRs)
-
-### ADR 1: RGA vs. LSEQ / Logoot vs. Automerge
-* **Context:** We needed a sequence CRDT capable of low-latency in-browser collaborative text editing.
-* **Decision:** Selected RGA over fractional indexing approaches (LSEQ / Logoot) and full JSON document CRDTs (Automerge).
-* **Rationale:** Fractional indexing suffers from boundary interleaving and precision overflow under adversarial concurrent typing patterns (e.g. alternating typing at the same cursor position). RGA's linked-tree structure guarantees deterministic convergence without tree balance degredation.
-
-### ADR 2: Property-Based Verification with Fast-Check
-* **Context:** Concurrency bugs in distributed CRDTs are notoriously subtle and difficult to catch with hand-crafted unit tests.
-* **Decision:** Employ property-based generative testing (`fast-check`) across randomized execution traces.
-* **Verification:** The test suite runs hundreds of randomized concurrent operations (arbitrary interleavings of insertions, deletions, and partitions across 2–5 virtual replicas) and verifies that:
-  $$\forall \text{ Replicas } A, B: \quad \text{State}(A) \equiv \text{State}(B) \quad \text{after syncing}$$
-
----
-
-## Live Simulation Lab
-
-Chorus includes an interactive lab panel designed for distributed systems demonstration:
-* **Latency Slider**: Inject 0 ms to 3,000 ms of artificial packet delay between peers.
-* **Jitter & Packet Loss**: Simulate dropped or out-of-order network packets.
-* **Network Partition Switch**: Sever communication between replicas to allow divergent local typing, then heal the partition to observe conflict-free convergence.
-
-## Running Locally
+## Try it locally
 
 ```bash
-npm install
-npm test          # Runs 80+ unit and fast-check convergence tests
-npm run dev       # Starts local collaborative editor studio
+npm ci
+npm run dev
 ```
+
+- In **Live room**, open the same room URL in two tabs on the same origin. Edit in either tab to see text and cursor updates.
+- In **Split lab**, enable **Partition** and edit both panes. Select **Heal** to deliver queued operations and inspect whether the replicas agree.
+- Adjust latency from 0 to 3,000 ms or increase packet loss. The operation timeline and pending-operation count show what is still in transit or waiting on a dependency.
+- Use the stress control to generate concurrent edits. The convergence badge compares visible text and version vectors and checks that no operations remain buffered.
+
+## Implementation
+
+The editor uses [CodeMirror](https://codemirror.net/). The CRDT and synchronization code live in this repository:
+
+| Component | What it does |
+| --- | --- |
+| [RgaDoc](src/crdt/doc.ts) | Stores characters in a doubly linked list, retains deleted characters as tombstones, and buffers operations whose dependencies have not arrived. |
+| [Item IDs](src/crdt/id.ts) and [operations](src/crdt/ops.ts) | Identify characters by site and Lamport counter. A separate per-site sequence number orders operations for delivery and version tracking. |
+| [Version vectors](src/crdt/version-vector.ts) and [replicas](src/session/replica.ts) | Track received operations and exchange missing operations during synchronization. |
+| [Broadcast transport](src/transport/broadcast.ts) | Connects tabs that join the same room using BroadcastChannel. |
+| [Editor binding](src/editor/binding.ts) | Applies CRDT changes to CodeMirror and maps editor positions to character IDs. |
+| [Simulated network](src/sim/network.ts) | Models latency, jitter, loss, and partitions for the lab. |
+
+Concurrent insertions after the same origin use a deterministic order based on the Lamport counter, then site ID. The visible-character index is an array cache; edits reindex the affected suffix. This helps append-heavy workloads, but it does not make arbitrary edits constant time.
+
+Tombstones and the operation log are retained. Document size and edit history therefore affect memory use. The simulator is useful for observing particular delivery schedules; the badge reports the current replicas' agreement rather than proving correctness for every possible execution.
+
+## Tests and benchmarks
+
+```bash
+npm test
+npm run build
+npm run bench
+npm run bench -- 50000
+```
+
+[CRDT property tests](src/crdt/convergence.property.test.ts) generate edit sequences across 2–4 replicas, vary delivery order, and compare text and version vectors after synchronization. [Replica tests](src/session/replica.test.ts) cover simulated delay, loss, partitions, and gap repair.
+
+The [benchmark script](scripts/bench.ts) measures local insertion, ordered and reversed remote delivery, concurrent edits, position lookups, and snapshot restoration. It also runs a two-replica simulation with latency and packet loss. Results depend on the workload and runtime; the script can be used to reproduce measurements on your machine.
 
 ## License
 
